@@ -1,0 +1,23 @@
+# Foghorn server on Linux (systemd). See docs/INSTALL-SERVER.md, "Linux".
+[Unit]
+Description=Foghorn alert server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=foghorn
+Group=foghorn
+ExecStart=/usr/local/bin/foghorn-server run -data /var/lib/foghorn
+Restart=on-failure
+RestartSec=5
+# hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/foghorn
+StateDirectory=foghorn
+StateDirectoryMode=0750
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitions xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <policyNamespaces>
+    <target prefix="foghorn" namespace="Foghorn.Policies.Client" />
+  </policyNamespaces>
+  <resources minRequiredRevision="1.0" />
+  <supportedOn>
+    <definitions>
+      <definition name="SUPPORTED_Foghorn" displayName="$(string.SUPPORTED_Foghorn)" />
+    </definitions>
+  </supportedOn>
+  <categories>
+    <category name="Foghorn" displayName="$(string.Cat_Foghorn)" explainText="$(string.Cat_Foghorn_Help)" />
+  </categories>
+  <policies>
+    <policy name="ServerConnection" class="Machine" displayName="$(string.ServerConnection)" explainText="$(string.ServerConnection_Help)" key="SOFTWARE\Policies\Foghorn" presentation="$(presentation.ServerConnection)">
+      <parentCategory ref="Foghorn" />
+      <supportedOn ref="SUPPORTED_Foghorn" />
+      <elements>
+        <text id="ServerUrl" valueName="ServerUrl" required="true" maxLength="400" />
+        <text id="ClientKey" valueName="ClientKey" required="true" maxLength="200" />
+      </elements>
+    </policy>
+    <policy name="UseSystemProxy" class="Machine" displayName="$(string.UseSystemProxy)" explainText="$(string.UseSystemProxy_Help)" key="SOFTWARE\Policies\Foghorn" valueName="UseSystemProxy">
+      <parentCategory ref="Foghorn" />
+      <supportedOn ref="SUPPORTED_Foghorn" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+  </policies>
+</policyDefinitions>

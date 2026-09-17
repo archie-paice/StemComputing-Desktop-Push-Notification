@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitionResources xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <displayName>Foghorn desktop alerts</displayName>
+  <description>Settings for the Foghorn desktop alert client.</description>
+  <resources>
+    <stringTable>
+      <string id="SUPPORTED_Foghorn">Windows 10, Windows 11 and Windows Server 2016 or later, with the Foghorn client installed</string>
+      <string id="Cat_Foghorn">Foghorn</string>
+      <string id="Cat_Foghorn_Help">Settings for the Foghorn desktop alert client.</string>
+      <string id="ServerConnection">Foghorn server connection</string>
+      <string id="ServerConnection_Help">Tells the Foghorn client on each computer where your Foghorn server is.
+
+Server address: the full address of the server including the port, for example http://foghorn01:8080 or https://foghorn.college.local
+
+Client key: copy this from the Foghorn web console, under Settings, Client key.
+
+Settings made here take priority over anything the installer saved on the computer. The client picks up a change within about a minute of Group Policy refreshing; nobody needs to log off.
+
+If this policy is Not Configured or Disabled, the client uses the settings saved by Install-FoghornClient (if any).</string>
+      <string id="UseSystemProxy">Connect through the system web proxy</string>
+      <string id="UseSystemProxy_Help">By default the Foghorn client connects straight to the Foghorn server and ignores any web proxy, because the server is normally on your own network.
+
+Enable this only if computers can reach the Foghorn server solely through the proxy configured in Windows.</string>
+    </stringTable>
+    <presentationTable>
+      <presentation id="ServerConnection">
+        <textBox refId="ServerUrl">
+          <label>Server address (e.g. http://foghorn01:8080)</label>
+        </textBox>
+        <textBox refId="ClientKey">
+          <label>Client key</label>
+        </textBox>
+      </presentation>
+    </presentationTable>
+  </resources>
+</policyDefinitionResources>
