@@ -71,11 +71,29 @@ server after changing it.
 | `service_windows.go` | Windows service install/run. |
 | `foghorn_test.go` | Tests. Run them before and after any change. |
 
-## The MSI (`deploy\msi\`)
+## The MSI and its transform (`deploy\msi\`)
 
 On Linux with `msitools`: `wixl -a x64 -o dist/FoghornClient.msi deploy/msi/FoghornClient.wxs`.
-On Windows with WiX Toolset v3: `candle -arch x64 FoghornClient.wxs` then `light FoghornClient.wixobj`.
-Bump `Version` in the `.wxs` for each release so upgrades work.
+Then re-apply the two post-build tweaks that make transforms work in a managed
+install (wixl does not model them in source):
+
+```bash
+msibuild dist/FoghornClient.msi -q "UPDATE Component SET Condition='SERVERURL' WHERE Component='Settings'"
+msibuild dist/FoghornClient.msi -q "UPDATE Property  SET Value='WIX_DOWNGRADE_DETECTED;WIX_UPGRADE_DETECTED;SERVERURL;CLIENTKEY;USESYSTEMPROXY' WHERE Property='SecureCustomProperties'"
+```
+
+On Windows with WiX Toolset v3: `candle -arch x64 FoghornClient.wxs` then
+`light FoghornClient.wixobj`. In WiX source you would express the same two
+tweaks as `<Condition>SERVERURL</Condition>` inside the `Settings` component
+and `<Property Id="SecureCustomProperties" Value="…" />` — wixl does not accept
+either. Bump `Version` in the `.wxs` for each release so upgrades work.
+
+The transform (`.mst`) is generated on Windows from the base MSI by
+`New-FoghornTransform.ps1`, using the built-in `WindowsInstaller.Installer`
+COM object (`GenerateTransform` + `CreateTransformSummaryInfo`). This is the
+same API WiX's `MakeMST` uses. It does not need to run on the machine that
+built the MSI — anyone deploying can regenerate a transform whenever the
+client key rotates.
 
 ## Calling it something other than "Foghorn"
 

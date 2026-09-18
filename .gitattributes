@@ -1,0 +1,31 @@
+# Default: normalise line endings on commit, check out with the OS's endings
+* text=auto
+
+# Windows-only files always keep CRLF
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+*.bat  text eol=crlf
+*.admx text eol=crlf
+*.adml text eol=crlf
+*.wxs  text eol=crlf
+
+# Shell / systemd / Linux-only files always keep LF
+*.sh          text eol=lf
+*.service     text eol=lf
+
+# Source: normal text
+*.go   text
+*.cs   text
+*.md   text
+*.html text
+*.css  text
+*.js   text
+*.json text
+*.wxs  text
+
+# Binaries
+*.exe binary
+*.msi binary
+*.mst binary
+*.ico binary
+*.png binary

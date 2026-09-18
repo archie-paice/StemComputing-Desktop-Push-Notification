@@ -101,6 +101,6 @@ On an affected PC:
    - **`FAILED: FoghornClient.exe is not next to this script`** → the exe is missing from the share folder.
    - **`FAILED: This must run as an administrator`** → it was added as a *user* log-on script. It must be under **Computer Configuration → … → Scripts → Startup**.
 2. `gpresult /r /scope computer` — is the `Foghorn client` GPO under *Applied Group Policy Objects*? If not: is the GPO linked to the OU the **computer** is in? Is it security-filtered away from the computer?
-3. Did the PC do a real **restart** since the GPO was linked? (*Shut down* with Fast Startup does not run start-up scripts — see [DEPLOY-CLIENTS.md, Step 4](DEPLOY-CLIENTS.md#step-4--check-it-worked).)
+3. Did the PC do a real **restart** since the GPO was linked? (*Shut down* with Fast Startup does not run Group Policy start-up processing — see [DEPLOY-CLIENTS.md, Step 5](DEPLOY-CLIENTS.md#step-5-check-it-worked).)
 4. Can the computer account read the share? From an administrator prompt on the PC: `psexec -s cmd` (Sysinternals) then `dir \\YOURDOMAIN\NETLOGON\Foghorn`. Simpler: check the folder's permissions include *Authenticated Users* or *Domain Computers* with Read.
 5. Is **Always wait for the network at computer startup and logon** enabled? Without it the script can run before the network is up. Event Viewer → *Applications and Services Logs → Microsoft → Windows → GroupPolicy → Operational* shows script processing and any failure.

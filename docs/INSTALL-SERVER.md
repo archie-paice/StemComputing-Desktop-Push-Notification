@@ -3,12 +3,12 @@
 This covers installing, configuring, securing, backing up, upgrading, moving
 and removing the server. If you only want it running, do **Part 1** and stop.
 
-- [Part 1 — Install on Windows](#part-1--install-on-windows)
-- [Part 2 — First sign-in](#part-2--first-sign-in)
-- [Part 3 — Settings you might change](#part-3--settings-you-might-change) (port, HTTPS)
-- [Part 4 — Looking after it](#part-4--looking-after-it) (backup, upgrade, move, remove, lost password)
-- [Appendix A — Installing on Linux](#appendix-a--installing-on-linux)
-- [Appendix B — Installing by hand, without the script](#appendix-b--installing-by-hand-without-the-script)
+- [Part 1 — Install on Windows](#part-1-install-on-windows)
+- [Part 2 — First sign-in](#part-2-first-sign-in)
+- [Part 3 — Settings you might change](#part-3-settings-you-might-change) (port, HTTPS)
+- [Part 4 — Looking after it](#part-4-looking-after-it) (backup, upgrade, move, remove, lost password)
+- [Appendix A — Installing on Linux](#appendix-a-installing-on-linux)
+- [Appendix B — Installing by hand, without the script](#appendix-b-installing-by-hand-without-the-script)
 
 ---
 

@@ -75,7 +75,7 @@ If the key leaks outside the organisation, or you just want a clean slate:
 **Settings → Client key → Replace key…**, then update the key in your GPO. PCs
 stop receiving alerts until they have the new key, so with the script-parameter
 method that means until their next restart; with the
-[ADMX method](DEPLOY-CLIENTS.md#appendix-a--setting-the-server-address-with-the-group-policy-template-admx)
+[ADMX method](DEPLOY-CLIENTS.md#appendix-a-setting-the-server-address-with-the-group-policy-template-admx)
 it is the next policy refresh.
 
 ## Students closing the client

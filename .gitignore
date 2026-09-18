@@ -1,0 +1,30 @@
+# Build output
+/dist/*
+!/dist/.gitkeep
+
+# Go
+/server/foghorn-server
+/server/foghorn-server.exe
+
+# Client
+/client/FoghornClient.exe
+/client/*.pdb
+
+# MSI intermediates
+/deploy/msi/*.wixobj
+/deploy/msi/*.wixpdb
+/deploy/msi/*.msi
+/deploy/msi/*.mst
+
+# Runtime data (never commit)
+/foghorn-data/
+FIRST-RUN.txt
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db

@@ -165,7 +165,10 @@ namespace Foghorn
             body["client"] = client; body["events"] = evs; body["wait"] = wait;
             byte[] payload = Encoding.UTF8.GetBytes(new JavaScriptSerializer().Serialize(body));
 
-            var req = (HttpWebRequest)WebRequest.Create(cfg.ServerUrl.TrimEnd('/') + "/api/client/poll");
+            // NB: TrimEnd(new[] { '/' }), not TrimEnd('/'). The single-char overload
+            // does not exist on .NET Framework 4.0; using it makes the client fail
+            // with "Method not found" on PCs that only have the older runtime.
+            var req = (HttpWebRequest)WebRequest.Create(cfg.ServerUrl.TrimEnd(new[] { '/' }) + "/api/client/poll");
             req.Method = "POST";
             req.ContentType = "application/json";
             req.Accept = "application/json";
