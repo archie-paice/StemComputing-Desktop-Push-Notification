@@ -2,6 +2,57 @@
 
 All notable changes to Foghorn are listed here, newest first.
 
+## 1.0.3
+
+Credit where it is due. No functional changes — if 1.0.2 is working on your
+estate, this only changes what Foghorn says about who wrote it.
+
+### Added
+- **Foghorn is credited to Archie Paice**, who designed and built it, with
+  `hello@archiepaice.com` as the contact. It now appears in the places an
+  administrator actually looks:
+  - the client exe's file properties — *Company* and *Copyright* on the Details
+    tab of `FoghornClient.exe`;
+  - *Publisher* in Apps and Features, from the MSI's `Manufacturer`, together
+    with a contact and a help link on the entry;
+  - the client's `--status` and `--help` windows, so whoever is troubleshooting
+    a PC can see it without going and finding the repository;
+  - the Group Policy template, in the description shown by the Group Policy
+    Management Editor;
+  - the `LICENSE` copyright line and the README.
+
+### Changed
+- The client's `AssemblyVersion` and `AssemblyFileVersion` were still
+  `1.0.0.0`, so the Details tab reported 1.0.0.0 even on the 1.0.2 build. They
+  now read 1.0.3.0, matching `Program.Version`. This was going to wait for 2.0,
+  but the credit above appears on that same properties dialog and it would have
+  sat next to a version that was two releases out of date.
+
+### Not yet in the shipped server — needs a rebuild
+The web console credit has been **written but not built**. `server/web/app.js`
+and `style.css` now put "Built by Archie Paice" above the signed-in user in the
+sidebar, and a *Built by* row in Settings → About this server. Neither is in
+`dist\foghorn-server.exe` or `dist\foghorn-server-linux-amd64`, because those
+files are compiled into the binary with `go:embed` and rebuilding needs the Go
+toolchain, which was not available.
+
+**Until someone rebuilds the server, signing into the console shows no credit.**
+The source and the shipped binaries disagree, which is the same class of fault
+that made 1.0.1 useless — it is recorded here rather than left to be discovered.
+
+To close it:
+
+```bash
+cd server && go test ./... \
+  && go build -mod=vendor -trimpath -ldflags "-s -w" -o ../dist/foghorn-server.exe . \
+  && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags "-s -w" \
+       -o ../dist/foghorn-server-linux-amd64 .
+```
+
+then refresh `dist\SHA256SUMS.txt`. The same rebuild would fix
+`foghorn-server version` still printing 1.0.0, and the `reset-password` message
+that tells Linux users to run the Windows-only `foghorn-server service start`.
+
 ## 1.0.2
 
 This release exists because 1.0.1 did not work. The fix was in the source but

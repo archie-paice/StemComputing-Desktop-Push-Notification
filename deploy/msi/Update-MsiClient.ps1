@@ -93,7 +93,8 @@ $newSize = (Get-Item $ExePath).Length
 # the two drift.
 $wxsPath = Join-Path $PSScriptRoot 'FoghornClient.wxs'
 if (-not (Test-Path $wxsPath)) { throw "Cannot find $wxsPath" }
-$wxsVersion = ([xml](Get-Content $wxsPath -Raw)).Wix.Product.Version
+$wxsXml = [xml](Get-Content $wxsPath -Raw)
+$wxsVersion = $wxsXml.Wix.Product.Version
 if (-not $wxsVersion) { throw "No Product Version in $wxsPath" }
 $msiVersion = (Get-Rows $db "SELECT Value FROM Property WHERE Property = 'ProductVersion'" 1)[0][0]
 
@@ -168,6 +169,29 @@ try {
         $msiVersion = $wxsVersion
     }
 
+    # ---- bring the plain properties into line -----------------------------
+    # Manufacturer is the Publisher column in Apps and Features; the ARP*
+    # properties sit beside the entry there. They are ordinary Property rows, so
+    # they can be carried across without rebuilding the whole package.
+    $wanted = [ordered]@{ 'Manufacturer' = $wxsXml.Wix.Product.Manufacturer }
+    foreach ($prop in $wxsXml.Wix.Product.Property) {
+        if ($prop.Value) { $wanted[$prop.Id] = $prop.Value }
+    }
+    foreach ($name in $wanted.Keys) {
+        $value = [string]$wanted[$name]
+        $existing = Get-Rows $db "SELECT Value FROM Property WHERE Property = '$name'" 1
+        $sqlValue = $value -replace "'", "''"
+        if ($existing.Count -eq 1) {
+            if ($existing[0][0] -eq $value) { continue }
+            $view = $db.OpenView("UPDATE Property SET Value = '$sqlValue' WHERE Property = '$name'")
+        } else {
+            $view = $db.OpenView("INSERT INTO Property (Property, Value) VALUES ('$name', '$sqlValue')")
+        }
+        [void]$view.Execute($null)
+        [void]$view.Close()
+        Write-Host "Property: $name = $value"
+    }
+
     $db.Commit()
 }
 finally {
@@ -212,6 +236,8 @@ foreach ($v in 'ServerUrl', 'ClientKey', 'UseSystemProxy') {
 Assert ((Get-Rows $vdb "SELECT FileSize FROM File WHERE File = '$fileKey'" 1)[0][0] -eq "$newSize") `
        "File table records $newSize bytes"
 Assert ($version -eq $wxsVersion) "ProductVersion is $wxsVersion, matching FoghornClient.wxs"
+Assert ($props['Manufacturer'] -eq $wxsXml.Wix.Product.Manufacturer) `
+       "Manufacturer (the Publisher shown in Apps and Features) is $($wxsXml.Wix.Product.Manufacturer)"
 [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($vdb)
 [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($verifier)
 $vdb = $null; $verifier = $null

@@ -82,6 +82,10 @@ a { color: var(--info); }
 .nav a[aria-current="page"] { background: #fff; color: #13212c; font-weight: 600; }
 .nav .count { font-size: .78rem; background: var(--beam); color: #13212c; border-radius: 99px; padding: 0 7px; font-weight: 600; }
 .side-foot { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid rgba(255,255,255,.12); font-size: .87rem; }
+/* The sidebar is dark in both themes, so this follows --sidebar-text rather
+   than --muted, which is a dark slate and would be unreadable on it. */
+.side-foot .credit { color: var(--sidebar-text); opacity: .75; font-size: .8rem; margin-bottom: 8px; }
+.side-foot .credit a { color: inherit; display: inline; margin: 0; text-decoration: underline; }
 .side-foot .who { color: #fff; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .side-foot a { color: var(--sidebar-text); display: inline-block; margin: 4px 12px 0 0; }
 .main { padding: 28px 32px 64px; max-width: 1240px; width: 100%; }
