@@ -14,6 +14,14 @@
     "dist\FoghornClient.exe was built from this source" from "someone changed
     the source and forgot to rebuild the exe".
 
+    Two things still have to match for the hashes to agree, because the compiler
+    records both in the assembly:
+
+      * the output file name - compare FoghornClient.exe with FoghornClient.exe,
+        in different folders, not with a build called something else, and
+      * the compiler - the 32-bit and 64-bit csc.exe emit different assemblies
+        from the same source, so build.cmd pins the 64-bit one.
+
     This is a staleness check, not a security check. Use SHA256SUMS.txt to
     verify a download has not been tampered with.
 #>

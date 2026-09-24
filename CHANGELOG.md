@@ -5,6 +5,15 @@ All notable changes to Foghorn are listed here, newest first.
 ## Unreleased
 
 ### Fixed
+- **The shipped client was still the broken one.** `dist\FoghornClient.exe` was
+  never rebuilt after the 1.0.1 source fix, so the binary in the release, on the
+  deployment share and inside the MSI still threw `Method not found` on every
+  poll. Rebuilt from `client\src` with the compiler in Windows, and checked
+  against a running server: it connects and the server records it.
+- **`dist\FoghornClient.msi` installed that broken client.** The MSI keeps its
+  own copy in an embedded cabinet, so replacing the exe in `dist\` did not
+  change what it deployed. The cabinet has been rebuilt around the working
+  client, and the MSI now unpacks to byte-for-byte what is in `dist\`.
 - **MSI transforms were empty in effect.** `New-FoghornTransform.ps1` called
   `GenerateTransform` on the original database instead of the modified one, so
   the `.mst` described removing the settings rather than adding them. PCs
@@ -37,6 +46,19 @@ All notable changes to Foghorn are listed here, newest first.
   timestamp and MVID blanked out. `csc.exe` is not deterministic, so two builds
   of identical source never have the same SHA256; this gives a value that only
   changes when the code does.
+- `deploy\msi\Update-MsiClient.ps1` puts the current `dist\FoghornClient.exe`
+  into the MSI's embedded cabinet, checks the result — including unpacking the
+  finished MSI and comparing what it would install — and refreshes
+  `dist\SHA256SUMS.txt`. It uses `makecab` and the Windows Installer COM API,
+  both part of Windows, so the MSI can be kept in step without WiX. Rebuilding
+  the MSI from `FoghornClient.wxs` still needs `build-msi.sh` on Linux.
+
+### Changed
+- `client\build.cmd` writes `dist\FoghornClient.exe` directly instead of leaving
+  the exe in `client\` to be copied by hand — the copy is what got forgotten in
+  1.0.1. Pass a path to build somewhere else: `build.cmd C:\tmp\FoghornClient.exe`.
+  It is also pinned to the 64-bit compiler, because the 32-bit one emits a
+  different assembly from the same source.
 - Linux server documentation: a section in the README and a full
   `INSTALL-SERVER.md` Appendix A (firewall, HTTPS, low ports, reverse proxy,
   upgrade, password reset, moving between Windows and Linux, removal).

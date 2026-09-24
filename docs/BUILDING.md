@@ -13,25 +13,33 @@ cd client
 build.cmd
 ```
 
-produces `client\FoghornClient.exe`. Copy it over `dist\FoghornClient.exe` (and
-onto your deployment share), then refresh `dist\SHA256SUMS.txt`.
+writes `dist\FoghornClient.exe` directly — there is no copying step, on purpose.
+Then put that client inside the MSI and refresh the checksums:
 
-**Always rebuild `dist\FoghornClient.exe` in the same commit that changes
-`client\src`.** 1.0.1 fixed the client source but shipped the 1.0.0 binary, so
-every PC kept failing until 1.0.2. The *Client build test* workflow now rebuilds
-the client on a Windows runner and fails the pull request if `dist\` does not
-match the source, so this cannot reach PCs again. To check before you push:
-
-```powershell
-cd client
-.\build.cmd
-.\Get-AssemblyContentHash.ps1 -Path .\FoghornClient.exe
-.\Get-AssemblyContentHash.ps1 -Path ..\dist\FoghornClient.exe   # must be the same
+```bat
+deploy\msi\Update-MsiClient.ps1
 ```
 
-The two hashes are equal when the binaries hold the same code. A plain SHA256
-will not do: `csc.exe` stamps a build time and a new MVID into every build, so
-two builds of identical source always differ.
+**Do both in the same commit that changes `client\src`.** 1.0.1 changed the
+source, shipped the old binary, and nothing noticed — and even once the exe is
+right, the MSI keeps its *own* copy of the client in an embedded cabinet, so it
+goes stale separately. The *Client build test* workflow now checks all three
+(source, `dist\` and the MSI's payload) and fails the pull request if they
+disagree.
+
+To check before you push, build to a scratch folder and compare:
+
+```powershell
+client\build.cmd "$env:TEMP\check\FoghornClient.exe"
+client\Get-AssemblyContentHash.ps1 -Path "$env:TEMP\check\FoghornClient.exe"
+client\Get-AssemblyContentHash.ps1 -Path dist\FoghornClient.exe   # must match
+```
+
+Keep the file name `FoghornClient.exe`: the compiler records it inside the
+assembly, so a build under any other name never matches. A plain SHA256 will not
+do either — `csc.exe` stamps a build time and a new MVID into every build, so
+two builds of identical source always differ. `Get-AssemblyContentHash.ps1`
+blanks those two fields and hashes the rest.
 
 Because it has to build with that older compiler, the source avoids newer C#
 syntax (`$"…"` strings, `?.`, `nameof`, `out var`, expression-bodied members).
