@@ -28,30 +28,31 @@ estate, this only changes what Foghorn says about who wrote it.
   but the credit above appears on that same properties dialog and it would have
   sat next to a version that was two releases out of date.
 
-### Not yet in the shipped server — needs a rebuild
-The web console credit has been **written but not built**. `server/web/app.js`
-and `style.css` now put "Built by Archie Paice" above the signed-in user in the
-sidebar, and a *Built by* row in Settings → About this server. Neither is in
-`dist\foghorn-server.exe` or `dist\foghorn-server-linux-amd64`, because those
-files are compiled into the binary with `go:embed` and rebuilding needs the Go
-toolchain, which was not available.
+### Server
+- Both server binaries have been **rebuilt**, so the web console credit is
+  actually in what you deploy. The console is compiled into the binary with
+  `go:embed`, so editing `server/web` changes nothing anyone runs until the
+  binary is rebuilt — signing in now shows the credit.
+- `dist\foghorn-server.exe` and `dist\foghorn-server-linux-amd64` are larger
+  (5.9 MB → 7.8 MB, 5.7 MB → 7.5 MB). They were previously built with an older
+  Go; these are built with Go 1.27.1. No functional change, and `go test ./...`
+  passes.
+- **The server build is now reproducible**, which it was not before. Go was
+  stamping the git commit into the binary, so it changed with every commit and
+  no check could confirm `dist\` matched the source — committing the binary was
+  circular, since it recorded the revision before the one containing it. Builds
+  now pass `-buildvcs=false` and set `CGO_ENABLED=0` explicitly (Go records that
+  setting, so leaving it unset makes the output depend on whether the machine
+  has a C compiler). Same source and same Go version now give a byte-identical
+  binary anywhere.
+- *Server build test* workflow: rebuilds both binaries on a pinned Go, fails if
+  `dist\` is not that build, then runs the committed Linux server and checks the
+  console it serves is byte-for-byte the files in `server/web`.
 
-**Until someone rebuilds the server, signing into the console shows no credit.**
-The source and the shipped binaries disagree, which is the same class of fault
-that made 1.0.1 useless — it is recorded here rather than left to be discovered.
-
-To close it:
-
-```bash
-cd server && go test ./... \
-  && go build -mod=vendor -trimpath -ldflags "-s -w" -o ../dist/foghorn-server.exe . \
-  && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags "-s -w" \
-       -o ../dist/foghorn-server-linux-amd64 .
-```
-
-then refresh `dist\SHA256SUMS.txt`. The same rebuild would fix
-`foghorn-server version` still printing 1.0.0, and the `reset-password` message
-that tells Linux users to run the Windows-only `foghorn-server service start`.
+### Still to do
+- `foghorn-server version` still prints 1.0.0, and `reset-password` still tells
+  you to run the Windows-only `foghorn-server service start` even on Linux.
+  Both were parked for 2.0; the toolchain to fix them is now in place.
 
 ## 1.0.2
 

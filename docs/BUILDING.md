@@ -94,8 +94,27 @@ Install Go from <https://go.dev/dl/>. Then, on Windows:
 ```bat
 cd server
 go test ./...
-go build -mod=vendor -trimpath -ldflags "-s -w" -o ..\dist\foghorn-server.exe .
+set CGO_ENABLED=0
+go build -mod=vendor -trimpath -buildvcs=false -ldflags "-s -w" -o ..\dist\foghorn-server.exe .
 ```
+
+Then refresh `dist\SHA256SUMS.txt`.
+
+`CGO_ENABLED=0` and `-buildvcs=false` are not optional, and both have to be
+there for the build to be reproducible:
+
+- Without `-buildvcs=false`, Go stamps the **git commit** into the binary. The
+  binary would then change on every commit, and committing it is circular — it
+  records the revision *before* the one that contains it — so no check could
+  ever confirm `dist\` matches the source.
+- `CGO_ENABLED` changes the binary even when the value is the one you would have
+  got anyway, because Go records it as a build setting. Leaving it unset means
+  the result depends on whether the machine happens to have a C compiler.
+
+With both set, the same source and the same Go version give a byte-identical
+binary on any machine, which is what the *Server build test* workflow checks.
+Changing the Go version changes the binary, so that workflow pins one; if you
+upgrade Go, rebuild both binaries and commit them in the same change.
 
 From Linux/macOS, for Windows: prefix the build with `GOOS=windows GOARCH=amd64`.
 

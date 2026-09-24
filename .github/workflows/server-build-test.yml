@@ -1,0 +1,143 @@
+# Rebuilds both server binaries from server\ and checks that the ones committed
+# in dist\ are that same build, then runs the server and checks it actually
+# serves the console.
+#
+# The client had this problem first: 1.0.1 fixed the source, shipped the old
+# binary, and nothing noticed. The server is worse in one way - the web console
+# is compiled into the binary with go:embed, so editing server/web changes
+# nothing that anyone runs until the binary is rebuilt.
+name: Server build test
+
+on:
+  pull_request:
+    paths:
+      - 'server/**'
+      - 'dist/foghorn-server.exe'
+      - 'dist/foghorn-server-linux-amd64'
+      - 'dist/SHA256SUMS.txt'
+      - '.github/workflows/server-build-test.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'dist/foghorn-server.exe'
+      - 'dist/foghorn-server-linux-amd64'
+  workflow_dispatch:
+
+env:
+  # The binaries in dist\ were built with this. Go's output changes between
+  # versions, so bumping this means rebuilding both binaries and committing
+  # them in the same change - see docs/BUILDING.md.
+  GO_VERSION: '1.27.1'
+
+jobs:
+  build-and-serve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Tests
+        working-directory: server
+        run: go test -mod=vendor ./...
+
+      - name: Rebuild both binaries
+        working-directory: server
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/built"
+          # -buildvcs=false keeps the git revision out of the binary. Without it
+          # the output changes with every commit and nothing below can hold.
+          GOOS=windows GOARCH=amd64 go build -mod=vendor -trimpath -buildvcs=false \
+            -ldflags "-s -w" -o "$RUNNER_TEMP/built/foghorn-server.exe" .
+          GOOS=linux GOARCH=amd64 go build -mod=vendor -trimpath -buildvcs=false \
+            -ldflags "-s -w" -o "$RUNNER_TEMP/built/foghorn-server-linux-amd64" .
+
+      - name: dist\ holds that build, not an older one
+        run: |
+          set -euo pipefail
+          fail=0
+          for name in foghorn-server.exe foghorn-server-linux-amd64; do
+            built=$(sha256sum "$RUNNER_TEMP/built/$name" | cut -d' ' -f1)
+            ship=$(sha256sum "dist/$name" | cut -d' ' -f1)
+            echo "$name"
+            echo "   rebuilt   $built"
+            echo "   committed $ship"
+            if [ "$built" != "$ship" ]; then echo "   MISMATCH"; fail=1; else echo "   ok"; fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            cat <<'MSG'
+
+          The server binaries in dist/ are not a build of the current server/ source.
+
+          If you changed anything under server/ - including server/web, which is
+          compiled into the binary with go:embed - rebuild both and commit them:
+
+              cd server
+              CGO_ENABLED=0 go build -mod=vendor -trimpath -buildvcs=false \
+                -ldflags "-s -w" -o ../dist/foghorn-server.exe .
+              CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=vendor -trimpath \
+                -buildvcs=false -ldflags "-s -w" -o ../dist/foghorn-server-linux-amd64 .
+
+          then refresh dist/SHA256SUMS.txt.
+
+          If you believe dist/ is right, check you used the same Go version this
+          workflow pins (see GO_VERSION above); a different one produces a
+          different binary from identical source.
+          MSG
+            exit 1
+          fi
+
+      - name: Checksums match
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          # Written on Windows, so it may carry CRLF; strip it before checking.
+          tr -d '\r' < SHA256SUMS.txt | sha256sum -c -
+
+      - name: The committed server runs and serves the console
+        run: |
+          set -euo pipefail
+          chmod +x dist/foghorn-server-linux-amd64
+          DATA="$RUNNER_TEMP/foghorn-data"
+          mkdir -p "$DATA"
+          dist/foghorn-server-linux-amd64 run -data "$DATA" -listen 127.0.0.1:18080 \
+            > "$RUNNER_TEMP/server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/server.pid"
+
+          for _ in $(seq 1 60); do
+            if curl -fsS -o /dev/null "http://127.0.0.1:18080/"; then break; fi
+            sleep 1
+          done
+          curl -fsS -o /dev/null "http://127.0.0.1:18080/" || { cat "$RUNNER_TEMP/server.log"; exit 1; }
+          echo "  ok  server is listening"
+
+          # The console is served from inside the binary. If server/web changed
+          # but the binary was not rebuilt, the rebuild check above has already
+          # failed; this proves the assets are genuinely being served.
+          curl -fsS "http://127.0.0.1:18080/app.js"    -o "$RUNNER_TEMP/app.js"
+          curl -fsS "http://127.0.0.1:18080/style.css" -o "$RUNNER_TEMP/style.css"
+          cmp -s "$RUNNER_TEMP/app.js" server/web/app.js \
+            || { echo "the app.js being served is not the one in server/web"; exit 1; }
+          cmp -s "$RUNNER_TEMP/style.css" server/web/style.css \
+            || { echo "the style.css being served is not the one in server/web"; exit 1; }
+          echo "  ok  the console it serves is the source in server/web"
+
+      - name: Stop the server
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/server.pid")" 2>/dev/null || true; fi
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-build-logs
+          path: ${{ runner.temp }}/server.log
+          if-no-files-found: ignore

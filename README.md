@@ -156,10 +156,10 @@ Linux, and removal are all covered in
 
 ```bash
 # Server (needs Go 1.22+)
-cd server && go test ./... && go build -mod=vendor -trimpath -ldflags "-s -w" -o ../dist/foghorn-server.exe .
+cd server && go test ./... && CGO_ENABLED=0 go build -mod=vendor -trimpath -buildvcs=false -ldflags "-s -w" -o ../dist/foghorn-server.exe .
 
 # Server for Linux (from any OS)
-cd server && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags "-s -w" -o ../dist/foghorn-server-linux-amd64 .
+cd server && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -mod=vendor -trimpath -buildvcs=false -ldflags "-s -w" -o ../dist/foghorn-server-linux-amd64 .
 
 # Client (on Windows, uses the C# compiler that ships with Windows itself)
 cd client && build.cmd
