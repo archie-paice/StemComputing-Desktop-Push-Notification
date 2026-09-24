@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Foghorn client MSI. Built on Linux with:  wixl -a x64 -o FoghornClient.msi FoghornClient.wxs
-     (also builds with the WiX Toolset v3 on Windows: candle -arch x64 + light).
+<!-- Foghorn client MSI. Build it with deploy/msi/build-msi.sh (Linux, msitools) - NOT with wixl on its own:
+     the script applies two post-build tweaks wixl cannot express, and a build without them is broken
+     for managed deployment. See docs/BUILDING.md.
      Optional install-time settings:  msiexec /i FoghornClient.msi /qn SERVERURL=http://foghorn01:8080 CLIENTKEY=...
      If they are left out, empty values are written and the client ignores them, taking its
      settings from Group Policy (Foghorn.admx) instead - which is the recommended way with an MSI.  -->
@@ -13,6 +14,7 @@
     <Media Id="1" Cabinet="foghorn.cab" EmbedCab="yes" />
     <Property Id="SERVERURL" Secure="yes" />
     <Property Id="CLIENTKEY" Secure="yes" />
+    <Property Id="USESYSTEMPROXY" Secure="yes" />
     <Property Id="ARPNOMODIFY" Value="1" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
@@ -29,6 +31,7 @@
             <RegistryKey Root="HKLM" Key="SOFTWARE\Foghorn">
               <RegistryValue Name="ServerUrl" Type="string" Value="[SERVERURL]" KeyPath="yes" />
               <RegistryValue Name="ClientKey" Type="string" Value="[CLIENTKEY]" />
+              <RegistryValue Name="UseSystemProxy" Type="string" Value="[USESYSTEMPROXY]" />
             </RegistryKey>
           </Component>
         </Directory>

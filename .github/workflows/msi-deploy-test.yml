@@ -1,0 +1,118 @@
+# Installs dist/FoghornClient.msi on a real Windows machine the way a school
+# would deploy it, and checks the result. Runs on every PR that touches the
+# MSI, its transform script, or the client binary.
+name: MSI deploy test
+
+on:
+  pull_request:
+    paths:
+      - 'dist/FoghornClient.msi'
+      - 'dist/FoghornClient.exe'
+      - 'deploy/msi/**'
+      - '.github/workflows/msi-deploy-test.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'dist/FoghornClient.msi'
+      - 'deploy/msi/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+    env:
+      MSI: ${{ github.workspace }}\dist\FoghornClient.msi
+      MST: ${{ runner.temp }}\Test.mst
+      SERVER_URL: http://foghorn-test.example:8080
+      CLIENT_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checksums match
+        working-directory: dist
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($line in Get-Content SHA256SUMS.txt) {
+            $hash, $name = $line -split '\s+', 2
+            $actual = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
+            if ($actual -ne $hash) { throw "$name checksum mismatch (SHA256SUMS.txt is stale)" }
+            "OK  $name"
+          }
+
+      - name: Helper functions
+        run: |
+          @'
+          function Invoke-Msi([string[]]$MsiArgs, [string]$Log) {
+            $p = Start-Process msiexec.exe -ArgumentList ($MsiArgs + @('/qn', '/norestart', '/l*v', "`"$Log`"")) -Wait -PassThru
+            if ($p.ExitCode -notin 0, 3010) {
+              Get-Content $Log -Tail 60
+              throw "msiexec $($MsiArgs -join ' ') failed with exit code $($p.ExitCode)"
+            }
+          }
+          function Assert($cond, $msg) { if (-not $cond) { throw "ASSERT FAILED: $msg" } else { "  ok  $msg" } }
+          $Exe   = 'C:\Program Files\Foghorn\FoghornClient.exe'
+          $Run   = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+          $Keys  = 'HKLM:\SOFTWARE\Foghorn'
+          '@ | Set-Content "$env:RUNNER_TEMP\helpers.ps1"
+
+      - name: "1. Generate the transform with New-FoghornTransform.ps1"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\deploy\msi\New-FoghornTransform.ps1 -MsiPath $env:MSI -MstPath $env:MST `
+              -ServerUrl $env:SERVER_URL -ClientKey $env:CLIENT_KEY -UseSystemProxy
+          if (-not (Test-Path $env:MST)) { throw 'No .mst was written' }
+
+      - name: "2. Install WITHOUT a transform (Group Policy / ADMX route)"
+        run: |
+          $ErrorActionPreference = 'Stop'; . "$env:RUNNER_TEMP\helpers.ps1"
+          Invoke-Msi @('/i', "`"$env:MSI`"") "$env:RUNNER_TEMP\plain-install.log"
+          Assert (Test-Path $Exe) 'client installed to Program Files'
+          Assert ((Get-ItemProperty $Run).FoghornClient -eq "`"$Exe`"") 'Run key starts the client at logon'
+          # Must not write empty settings that would mask Group Policy.
+          Assert (-not (Get-ItemProperty $Keys -ErrorAction SilentlyContinue).ServerUrl) 'no ServerUrl written without a transform'
+          Invoke-Msi @('/x', "`"$env:MSI`"") "$env:RUNNER_TEMP\plain-uninstall.log"
+          Assert (-not (Test-Path $Exe)) 'uninstall removed the client'
+
+      - name: "3. Install WITH the transform (MSI + MST route)"
+        run: |
+          $ErrorActionPreference = 'Stop'; . "$env:RUNNER_TEMP\helpers.ps1"
+          Invoke-Msi @('/i', "`"$env:MSI`"", "TRANSFORMS=`"$env:MST`"") "$env:RUNNER_TEMP\mst-install.log"
+          $s = Get-ItemProperty $Keys
+          Assert (Test-Path $Exe) 'client installed'
+          Assert ($s.ServerUrl -eq $env:SERVER_URL) "ServerUrl = $($s.ServerUrl)"
+          Assert ($s.ClientKey -eq $env:CLIENT_KEY) 'ClientKey came from the transform'
+          Assert ($s.UseSystemProxy -eq '1') "UseSystemProxy = $($s.UseSystemProxy)"
+          Assert (-not (Test-Path 'HKLM:\SOFTWARE\WOW6432Node\Foghorn')) 'settings in the 64-bit hive, not WOW6432Node'
+
+      - name: "4. Reinstall over itself (GPO re-application) keeps settings"
+        run: |
+          $ErrorActionPreference = 'Stop'; . "$env:RUNNER_TEMP\helpers.ps1"
+          Invoke-Msi @('/fa', "`"$env:MSI`"") "$env:RUNNER_TEMP\repair.log"
+          Assert ((Get-ItemProperty $Keys).ServerUrl -eq $env:SERVER_URL) 'repair kept ServerUrl'
+
+      - name: "5. Uninstall removes everything"
+        run: |
+          $ErrorActionPreference = 'Stop'; . "$env:RUNNER_TEMP\helpers.ps1"
+          Invoke-Msi @('/x', "`"$env:MSI`"") "$env:RUNNER_TEMP\mst-uninstall.log"
+          Assert (-not (Test-Path $Exe)) 'client removed'
+          Assert (-not (Get-ItemProperty $Run -ErrorAction SilentlyContinue).FoghornClient) 'Run key removed'
+          Assert (-not (Get-ItemProperty $Keys -ErrorAction SilentlyContinue).ServerUrl) 'settings removed'
+
+      - name: "6. Command-line properties (Intune / SCCM route)"
+        run: |
+          $ErrorActionPreference = 'Stop'; . "$env:RUNNER_TEMP\helpers.ps1"
+          Invoke-Msi @('/i', "`"$env:MSI`"", "SERVERURL=$env:SERVER_URL", "CLIENTKEY=$env:CLIENT_KEY") "$env:RUNNER_TEMP\cli-install.log"
+          $s = Get-ItemProperty $Keys
+          Assert ($s.ServerUrl -eq $env:SERVER_URL) 'ServerUrl from command line'
+          Assert ($s.UseSystemProxy -ne '1') 'UseSystemProxy off when not asked for'
+          Invoke-Msi @('/x', "`"$env:MSI`"") "$env:RUNNER_TEMP\cli-uninstall.log"
+
+      - name: Upload msiexec logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msiexec-logs
+          path: ${{ runner.temp }}\*.log

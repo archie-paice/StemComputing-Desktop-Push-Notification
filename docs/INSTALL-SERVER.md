@@ -16,7 +16,7 @@ and removing the server. If you only want it running, do **Part 1** and stop.
 
 | | |
 |---|---|
-| A machine that stays on | Windows Server 2016 or later, or Windows 10/11. A VM is fine. It does **not** need to be a domain controller and should not be one. |
+| A machine that stays on | Windows Server 2016 or later, or Windows 10/11. Or a 64-bit Linux server with systemd — see [Appendix A](#appendix-a-installing-on-linux). A VM is fine. It does **not** need to be a domain controller and should not be one. |
 | Resources | Tiny. About 40 MB of memory with 1,500 PCs connected. |
 | Network | Every PC that should receive alerts must be able to reach this machine on one TCP port (8080 unless you change it). |
 | A name for it | PCs will be told the server's address. A DNS name such as `foghorn01` or an alias like `foghorn.college.local` is better than an IP address, because you can move the server later without touching the PCs. |
@@ -221,22 +221,181 @@ powershell -ExecutionPolicy Bypass -File .\Uninstall-FoghornServer.ps1 -RemoveDa
 
 ## Appendix A — Installing on Linux
 
-The server is a single static binary.
+The server runs just as well on Linux. **Only the server** — the desktop
+client is Windows-only, and the PCs neither know nor care which operating
+system the server is on. Everything in Parts 2–4 applies; this appendix gives
+the Linux equivalent of each step.
+
+### What you need
+
+| | |
+|---|---|
+| Distribution | Any 64-bit (x86-64) Linux with systemd: Ubuntu 22.04+, Debian 12+, RHEL/Rocky/Alma 9+, and so on. A small VM or LXC container is plenty. |
+| Architecture | `dist/foghorn-server-linux-amd64` is x86-64 only. For ARM (a Raspberry Pi, say) build it yourself: `cd server && GOOS=linux GOARCH=arm64 go build -mod=vendor -trimpath -ldflags "-s -w" -o ../dist/foghorn-server-linux-arm64 .` |
+| Dependencies | None. It is a single static binary — no Go, .NET, database or web server needed. |
+| Rights | `sudo`. The server itself runs as an unprivileged `foghorn` account. |
+
+### A.1 Install
+
+From the Foghorn folder (copied or `git clone`d onto the server):
 
 ```bash
-sudo useradd --system --home /var/lib/foghorn --shell /usr/sbin/nologin foghorn
+# 1. A system account for the service to run as (no login, no home directory)
+sudo useradd --system --home-dir /var/lib/foghorn --shell /usr/sbin/nologin foghorn
+
+# 2. The program and the systemd unit
 sudo install -m 0755 dist/foghorn-server-linux-amd64 /usr/local/bin/foghorn-server
 sudo install -m 0644 deploy/linux/foghorn.service /etc/systemd/system/foghorn.service
+
+# 3. Start it now and at every boot
 sudo systemctl daemon-reload
 sudo systemctl enable --now foghorn
-sudo cat /var/lib/foghorn/FIRST-RUN.txt        # temporary password and client key
+
+# 4. Check it is running, then read the first-run details
+systemctl status foghorn --no-pager
+sudo cat /var/lib/foghorn/FIRST-RUN.txt
 ```
 
-Data lives in `/var/lib/foghorn`; `config.json` there works as in Part 3. Open
-the port in your firewall (`sudo ufw allow 8080/tcp` or equivalent). To reset a
-password: `sudo systemctl stop foghorn`, then
-`sudo -u foghorn foghorn-server reset-password -data /var/lib/foghorn admin`,
-then start it again.
+`FIRST-RUN.txt` holds the temporary `admin` password and the client key —
+exactly what the Windows installer prints. Continue with
+[Part 2 — First sign-in](#part-2-first-sign-in) at `http://SERVER-NAME:8080/`.
+
+What that did, so nothing is a mystery:
+
+| It did this | Why |
+|---|---|
+| Created the `foghorn` system account | The service never runs as root. |
+| Put the program in `/usr/local/bin/foghorn-server` | Standard place for software not managed by the package manager. |
+| systemd created `/var/lib/foghorn` (mode `0750`, owned by `foghorn`) | `StateDirectory=` in the unit. It holds password hashes and the client key. |
+| Started the service with a hardened sandbox | The unit can write **only** to `/var/lib/foghorn`; the rest of the system is read-only to it and `/home` is invisible. It restarts itself if it ever crashes. |
+
+> **The service won't start and `systemctl status` shows `status=203/EXEC`?**
+> The binary is not executable or, on RHEL-family systems, has the wrong
+> SELinux label (usually because it was `mv`ed from a home directory rather
+> than `install`ed). Fix with `sudo chmod 0755 /usr/local/bin/foghorn-server`
+> and `sudo restorecon -v /usr/local/bin/foghorn-server`.
+
+### A.2 Open the firewall
+
+PCs and browsers must reach the server on its port (8080 by default).
+
+```bash
+sudo ufw allow 8080/tcp                                        # Ubuntu / Debian with ufw
+sudo firewall-cmd --permanent --add-port=8080/tcp && sudo firewall-cmd --reload   # RHEL family
+```
+
+If you can, limit it to your client subnets rather than opening it to
+everything, e.g. `sudo ufw allow from 10.20.0.0/16 to any port 8080 proto tcp`.
+
+### A.3 Where everything is
+
+| Path | Contents |
+|---|---|
+| `/usr/local/bin/foghorn-server` | The program. |
+| `/etc/systemd/system/foghorn.service` | The service definition. |
+| `/var/lib/foghorn/config.json` | Port and HTTPS settings — same format as [Part 3](#part-3-settings-you-might-change). |
+| `/var/lib/foghorn/state.json`, `alerts.json`, `clients.json` | Accounts, alerts, computers — as in [Part 4](#where-everything-is). |
+| `/var/lib/foghorn/foghorn.log` | The application log. Also in the journal: `journalctl -u foghorn`. |
+
+> Always pass `-data /var/lib/foghorn` when running `foghorn-server` by hand on
+> Linux. Without it the program uses a `foghorn-data` folder in the current
+> directory, not the service's data.
+
+### A.4 Changing settings
+
+```bash
+sudo -u foghorn nano /var/lib/foghorn/config.json     # or any editor
+sudo systemctl restart foghorn
+```
+
+The settings are the same as on Windows ([Part 3](#part-3-settings-you-might-change)).
+Paths use forward slashes and need no doubling. If the service will not start
+afterwards, the reason is in `journalctl -u foghorn -n 20`.
+
+**Ports below 1024 (e.g. 443).** The service runs unprivileged, so it cannot
+bind a low port by default. Either keep 8443 (simplest), or allow it:
+
+```bash
+sudo systemctl edit foghorn
+#   add these two lines, save:
+#   [Service]
+#   AmbientCapabilities=CAP_NET_BIND_SERVICE
+sudo systemctl restart foghorn
+```
+
+### A.5 HTTPS
+
+Same reasoning and certificate advice as [Turning on HTTPS](#turning-on-https).
+Then:
+
+```bash
+sudo install -o foghorn -g foghorn -m 0644 foghorn.crt /var/lib/foghorn/foghorn.crt
+sudo install -o foghorn -g foghorn -m 0600 foghorn.key /var/lib/foghorn/foghorn.key
+```
+
+```json
+{
+  "listen": ":8443",
+  "tls_cert": "/var/lib/foghorn/foghorn.crt",
+  "tls_key": "/var/lib/foghorn/foghorn.key",
+  "trust_proxy_headers": false
+}
+```
+
+Restart, open the new port in the firewall, and change the clients' server
+address to the `https://…` one. The certificate files must live somewhere the
+service can read — `/var/lib/foghorn` is the easy choice; `/home` is hidden
+from it by the sandbox.
+
+**Behind nginx or another reverse proxy instead?** Have Foghorn listen on
+`127.0.0.1:8080`, set `"trust_proxy_headers": true`, and make the proxy pass
+`X-Forwarded-For` and `X-Forwarded-Proto` (subnet targeting and the logs rely
+on the real client address). PCs hold each request open for about 25 seconds,
+so the proxy's read timeout must be longer than that — nginx's default of 60
+seconds is fine; do not lower it.
+
+### A.6 Looking after it
+
+| Task | Command |
+|---|---|
+| Is it running? | `systemctl status foghorn` |
+| Restart / stop / start | `sudo systemctl restart foghorn` (or `stop`, `start`) |
+| Recent log | `journalctl -u foghorn -n 50` or `sudo tail -f /var/lib/foghorn/foghorn.log` |
+| Version | `foghorn-server version` |
+| Back up | `sudo tar czf foghorn-backup-$(date +%F).tgz -C /var/lib foghorn` — safe while running |
+
+**Upgrading** — replace the binary and restart. Data and settings are untouched.
+
+```bash
+sudo install -m 0755 dist/foghorn-server-linux-amd64 /usr/local/bin/foghorn-server
+sudo install -m 0644 deploy/linux/foghorn.service /etc/systemd/system/foghorn.service
+sudo systemctl daemon-reload && sudo systemctl restart foghorn
+```
+
+**Someone is locked out** (the only administrator):
+
+```bash
+sudo systemctl stop foghorn
+sudo -u foghorn foghorn-server reset-password -data /var/lib/foghorn admin
+sudo systemctl start foghorn
+```
+
+**Moving between Windows and Linux** (either direction) works: the data files
+are the same. Stop both services, copy the *contents* of the data folder
+across (`C:\ProgramData\Foghorn` ⇄ `/var/lib/foghorn`), on Linux run
+`sudo chown -R foghorn:foghorn /var/lib/foghorn`, fix the `tls_cert`/`tls_key`
+paths in `config.json` if you use HTTPS, then start the new one and move the
+DNS name — as in [Moving to another machine](#moving-to-another-machine).
+
+**Removing it:**
+
+```bash
+sudo systemctl disable --now foghorn
+sudo rm /etc/systemd/system/foghorn.service /usr/local/bin/foghorn-server
+sudo systemctl daemon-reload
+sudo rm -rf /var/lib/foghorn          # only if you also want to delete the data
+sudo userdel foghorn
+```
 
 ## Appendix B — Installing by hand, without the script
 

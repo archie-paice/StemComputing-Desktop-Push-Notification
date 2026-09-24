@@ -2,6 +2,29 @@
 
 All notable changes to Foghorn are listed here, newest first.
 
+## Unreleased
+
+### Fixed
+- **MSI transforms were empty in effect.** `New-FoghornTransform.ps1` called
+  `GenerateTransform` on the original database instead of the modified one, so
+  the `.mst` described removing the settings rather than adding them. PCs
+  deployed with MSI + MST got no server address or client key. Argument order
+  now matches the Windows SDK's `WiGenXfm.vbs`.
+- **`dist\FoghornClient.msi` was a stale build.** It reported version 1.0.0 and
+  was missing both post-build tweaks listed under 1.0.1 (the `SERVERURL`
+  condition and `SecureCustomProperties`). Rebuilt as 1.0.1 with them.
+- **`-UseSystemProxy` on the transform did nothing** — the MSI never wrote
+  `UseSystemProxy`. It now does, from the `USESYSTEMPROXY` property.
+
+### Added
+- `deploy/msi/build-msi.sh` builds the MSI, applies the post-build tweaks and
+  checks the result, so a bare `wixl` build can't be shipped by mistake.
+- *MSI deploy test* GitHub Actions workflow: installs the MSI on a real Windows
+  runner (plain, with transform, repair, uninstall, command-line properties).
+- Linux server documentation: a section in the README and a full
+  `INSTALL-SERVER.md` Appendix A (firewall, HTTPS, low ports, reverse proxy,
+  upgrade, password reset, moving between Windows and Linux, removal).
+
 ## 1.0.1
 
 ### Fixed

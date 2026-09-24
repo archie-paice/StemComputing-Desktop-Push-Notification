@@ -73,14 +73,32 @@ server after changing it.
 
 ## The MSI and its transform (`deploy\msi\`)
 
-On Linux with `msitools`: `wixl -a x64 -o dist/FoghornClient.msi deploy/msi/FoghornClient.wxs`.
-Then re-apply the two post-build tweaks that make transforms work in a managed
-install (wixl does not model them in source):
+On Linux, install `wixl` and `msitools` (`sudo apt install wixl msitools`) and run:
 
 ```bash
-msibuild dist/FoghornClient.msi -q "UPDATE Component SET Condition='SERVERURL' WHERE Component='Settings'"
-msibuild dist/FoghornClient.msi -q "UPDATE Property  SET Value='WIX_DOWNGRADE_DETECTED;WIX_UPGRADE_DETECTED;SERVERURL;CLIENTKEY;USESYSTEMPROXY' WHERE Property='SecureCustomProperties'"
+deploy/msi/build-msi.sh
 ```
+
+**Always use the script, not a bare `wixl` build.** wixl cannot express two
+things the MSI needs, so the script applies them after the build:
+
+1. `Condition = SERVERURL` on the `Settings` component — installing without a
+   transform then writes nothing to `HKLM\SOFTWARE\Foghorn` that would mask
+   the Group Policy settings.
+2. `SERVERURL;CLIENTKEY;USESYSTEMPROXY` in `SecureCustomProperties`, so those
+   properties survive a managed install.
+
+It then checks the result (version, both tweaks, all three registry values, and
+that the embedded `FoghornClient.exe` matches `dist\`) and refreshes
+`dist/SHA256SUMS.txt`. It fails loudly rather than leave a broken MSI in
+`dist/`. Rebuild the client exe first if it changed.
+
+**Testing it.** The *MSI deploy test* GitHub Actions workflow
+(`.github/workflows/msi-deploy-test.yml`) installs the MSI on a real Windows
+runner on every pull request that touches it: it generates a transform with
+`New-FoghornTransform.ps1`, then checks a plain install, an install with the
+transform, a repair, uninstall, and command-line properties. The msiexec logs
+are attached to each run. You can also start it by hand from the Actions tab.
 
 On Windows with WiX Toolset v3: `candle -arch x64 FoghornClient.wxs` then
 `light FoghornClient.wixobj`. In WiX source you would express the same two
