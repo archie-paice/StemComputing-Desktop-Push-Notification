@@ -1,0 +1,218 @@
+# Rebuilds FoghornClient.exe from client\src on a real Windows machine, checks
+# that the exe committed in dist\ is that same build, and then runs it against a
+# real Foghorn server to prove it can still connect.
+#
+# Why this exists: 1.0.1 fixed the client source but shipped the old binary, and
+# nothing noticed. The shipped exe called String.TrimEnd(char) - an API that does
+# not exist in .NET Framework at all - so every Windows PC failed with
+# "Method not found" on every poll. A build-only check would not have caught it;
+# only actually starting the client against a server does.
+name: Client build test
+
+on:
+  pull_request:
+    paths:
+      - 'client/**'
+      - 'dist/FoghornClient.exe'
+      - 'dist/foghorn-server.exe'
+      - 'dist/SHA256SUMS.txt'
+      - '.github/workflows/client-build-test.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'client/**'
+      - 'dist/FoghornClient.exe'
+  workflow_dispatch:
+
+jobs:
+  build-and-connect:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+    env:
+      LISTEN: 127.0.0.1:18080
+      DATA: ${{ runner.temp }}\foghorn-data
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Which compiler is on this runner
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # build.cmd prefers the 64-bit in-box compiler and falls back to the
+          # 32-bit one. The two produce genuinely different assemblies, so the
+          # "matches dist" check below is only stable if the 64-bit one is used.
+          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          if (-not (Test-Path $csc)) { throw "No 64-bit in-box C# compiler on this runner; dist\FoghornClient.exe is built with that one." }
+          "csc: $((Get-Item $csc).VersionInfo.FileVersion)"
+
+      - name: Client, WXS and MSI all claim the same version
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The client reported 1.0.0 for the whole of 1.0.1 because the version
+          # is written down in three places and only one of them was updated.
+          $src = Get-Content .\client\src\Program.cs -Raw
+          if ($src -notmatch 'const\s+string\s+Version\s*=\s*"([^"]+)"') { throw "no Version constant in client\src\Program.cs" }
+          $client = $Matches[1]
+          $wxs = ([xml](Get-Content .\deploy\msi\FoghornClient.wxs -Raw)).Wix.Product.Version
+          $installer = New-Object -ComObject WindowsInstaller.Installer
+          $db = $installer.OpenDatabase("$env:GITHUB_WORKSPACE\dist\FoghornClient.msi", 0)
+          $view = $db.OpenView("SELECT Value FROM Property WHERE Property = 'ProductVersion'")
+          [void]$view.Execute($null)
+          $msi = $view.Fetch().StringData(1)
+          [void]$view.Close()
+          "  client\src\Program.cs : $client"
+          "  FoghornClient.wxs     : $wxs"
+          "  dist\FoghornClient.msi: $msi"
+          if ($client -ne $wxs -or $wxs -ne $msi) { throw "these three must agree" }
+
+      - name: Build the client from source
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Into a scratch folder, NOT dist\ - build.cmd writes to dist\ by
+          # default, and comparing dist\ with itself would pass no matter what.
+          # The file has to keep its name: csc records it in the assembly, so a
+          # build called anything else never matches.
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\client-build" | Out-Null
+          & .\client\build.cmd "$env:RUNNER_TEMP\client-build\FoghornClient.exe"
+          if ($LASTEXITCODE -ne 0) { throw "client\build.cmd failed" }
+          if (-not (Test-Path "$env:RUNNER_TEMP\client-build\FoghornClient.exe")) { throw "build.cmd produced no exe" }
+
+      - name: dist\FoghornClient.exe is that build, not an older one
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # csc stamps a build time and a fresh MVID into every build, so the raw
+          # SHA256 of two builds of the same source never matches. This compares
+          # the assembly with those two fields blanked out.
+          $fresh = & .\client\Get-AssemblyContentHash.ps1 -Path "$env:RUNNER_TEMP\client-build\FoghornClient.exe"
+          $ship  = & .\client\Get-AssemblyContentHash.ps1 -Path .\dist\FoghornClient.exe
+          "built from source : $fresh"
+          "committed in dist : $ship"
+          if ($fresh -ne $ship) {
+            Write-Host "dist\FoghornClient.exe was not built from the current client\src."
+            Write-Host ""
+            Write-Host "Rebuild it and commit the result:"
+            Write-Host "    client\build.cmd                 (writes dist\FoghornClient.exe)"
+            Write-Host "    deploy\msi\Update-MsiClient.ps1  (puts it in the MSI, refreshes SHA256SUMS.txt)"
+            Write-Host ""
+            Write-Host "If you believe dist\ is correct, check that you built with the 64-bit"
+            Write-Host "in-box compiler; the 32-bit one emits a different assembly."
+            throw "dist\FoghornClient.exe is stale"
+          }
+
+      - name: Checksums match
+        working-directory: dist
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($line in Get-Content SHA256SUMS.txt) {
+            if (-not $line.Trim()) { continue }
+            $hash, $name = $line -split '\s+', 2
+            $actual = (Get-FileHash $name.Trim() -Algorithm SHA256).Hash.ToLower()
+            if ($actual -ne $hash) { throw "$name checksum mismatch (SHA256SUMS.txt is stale)" }
+            "OK  $name"
+          }
+
+      - name: dist\FoghornClient.msi carries that same client
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The MSI keeps its own copy of the client in an embedded cabinet.
+          # Replacing dist\FoghornClient.exe does not change what the MSI
+          # installs, so it can go stale on its own - which is what shipped
+          # in 1.0.1.
+          $out = "$env:RUNNER_TEMP\msi-unpack"
+          $p = Start-Process msiexec.exe -ArgumentList @('/a', "`"$env:GITHUB_WORKSPACE\dist\FoghornClient.msi`"", '/qn', "TARGETDIR=`"$out`"") -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "could not unpack the MSI (msiexec exit $($p.ExitCode))" }
+          $inside = Get-ChildItem $out -Recurse -Filter 'FoghornClient.exe' | Select-Object -First 1
+          if (-not $inside) { throw "the MSI contains no FoghornClient.exe" }
+          $a = (Get-FileHash $inside.FullName -Algorithm SHA256).Hash
+          $b = (Get-FileHash .\dist\FoghornClient.exe -Algorithm SHA256).Hash
+          if ($a -ne $b) {
+            Write-Host "The MSI installs a different client from the one in dist\."
+            Write-Host "  in the MSI : $a"
+            Write-Host "  in dist\   : $b"
+            Write-Host ""
+            Write-Host "Run deploy\msi\Update-MsiClient.ps1 (Windows) or deploy/msi/build-msi.sh (Linux)."
+            throw "dist\FoghornClient.msi is stale"
+          }
+          "  ok  the MSI installs the client in dist\"
+
+      - name: Start a real Foghorn server
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force $env:DATA | Out-Null
+          $p = Start-Process .\dist\foghorn-server.exe -ArgumentList @('run', '-data', $env:DATA, '-listen', $env:LISTEN) -PassThru -WindowStyle Hidden -RedirectStandardOutput "$env:RUNNER_TEMP\server.out" -RedirectStandardError "$env:RUNNER_TEMP\server.err"
+          $p.Id | Set-Content "$env:RUNNER_TEMP\server.pid"
+
+          # The server creates its client key on first run and stores it in state.json.
+          $key = $null
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Get-Date) -lt $deadline) {
+            if (Test-Path "$env:DATA\state.json") {
+              try { $key = (Get-Content "$env:DATA\state.json" -Raw | ConvertFrom-Json).settings.client_key } catch { }
+              if ($key) { break }
+            }
+            Start-Sleep -Milliseconds 500
+          }
+          if (-not $key) {
+            Get-Content "$env:RUNNER_TEMP\server.out", "$env:RUNNER_TEMP\server.err" -ErrorAction SilentlyContinue
+            throw "the server never produced a client key"
+          }
+          (Invoke-WebRequest "http://$env:LISTEN/" -UseBasicParsing -TimeoutSec 20).StatusCode | Out-Null
+          $key | Set-Content "$env:RUNNER_TEMP\client.key"
+          "server is up on $env:LISTEN"
+
+      - name: The shipped client connects to it
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $key = (Get-Content "$env:RUNNER_TEMP\client.key" -Raw).Trim()
+          $log = Join-Path $env:LOCALAPPDATA 'Foghorn\client.log'
+          Remove-Item $log -Force -ErrorAction SilentlyContinue
+
+          # Deliberately the exe from dist\ - that is the one that reaches PCs.
+          $c = Start-Process .\dist\FoghornClient.exe -ArgumentList @('--server', "http://$env:LISTEN", '--key', $key) -PassThru -WindowStyle Hidden
+
+          # The server records every client that polls it in clients.json.
+          $seen = $null
+          $deadline = (Get-Date).AddSeconds(90)
+          while ((Get-Date) -lt $deadline) {
+            if (Test-Path "$env:DATA\clients.json") {
+              try { $seen = @(Get-Content "$env:DATA\clients.json" -Raw | ConvertFrom-Json) } catch { }
+              if ($seen -and $seen.Count -gt 0) { break }
+            }
+            if ($c.HasExited) { break }
+            Start-Sleep -Seconds 2
+          }
+          Stop-Process -Id $c.Id -Force -ErrorAction SilentlyContinue
+          if (Test-Path $log) { Copy-Item $log "$env:RUNNER_TEMP\client.log" -Force }
+
+          if (-not $seen -or $seen.Count -eq 0) {
+            Write-Host "--- client log ---"
+            if (Test-Path $log) { Get-Content $log } else { Write-Host "(the client wrote no log at all)" }
+            Write-Host "--- server log ---"
+            Get-Content "$env:RUNNER_TEMP\server.out" -Tail 40 -ErrorAction SilentlyContinue
+            throw "dist\FoghornClient.exe never reached the server - it starts, but every poll throws before it gets out. This is the 1.0.1 failure."
+          }
+          "  ok  server saw $($seen[0].hostname) as $($seen[0].user), client version $($seen[0].version)"
+
+          # What the 1.0.1 binary logged on a PC that was otherwise perfectly healthy.
+          if (Select-String -Path $log -Pattern 'Method not found' -Quiet -ErrorAction SilentlyContinue) {
+            Get-Content $log
+            throw "the client logged 'Method not found' - it calls an API this .NET Framework does not have"
+          }
+
+      - name: Stop the server
+        if: always()
+        run: |
+          $pidFile = "$env:RUNNER_TEMP\server.pid"
+          if (Test-Path $pidFile) { Stop-Process -Id (Get-Content $pidFile) -Force -ErrorAction SilentlyContinue }
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-build-logs
+          path: |
+            ${{ runner.temp }}\server.out
+            ${{ runner.temp }}\server.err
+            ${{ runner.temp }}\client.log
+          if-no-files-found: ignore

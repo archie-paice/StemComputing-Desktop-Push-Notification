@@ -13,8 +13,33 @@ cd client
 build.cmd
 ```
 
-produces `client\FoghornClient.exe`. Copy it over `dist\FoghornClient.exe` (and
-onto your deployment share).
+writes `dist\FoghornClient.exe` directly — there is no copying step, on purpose.
+Then put that client inside the MSI and refresh the checksums:
+
+```bat
+deploy\msi\Update-MsiClient.ps1
+```
+
+**Do both in the same commit that changes `client\src`.** 1.0.1 changed the
+source, shipped the old binary, and nothing noticed — and even once the exe is
+right, the MSI keeps its *own* copy of the client in an embedded cabinet, so it
+goes stale separately. The *Client build test* workflow now checks all three
+(source, `dist\` and the MSI's payload) and fails the pull request if they
+disagree.
+
+To check before you push, build to a scratch folder and compare:
+
+```powershell
+client\build.cmd "$env:TEMP\check\FoghornClient.exe"
+client\Get-AssemblyContentHash.ps1 -Path "$env:TEMP\check\FoghornClient.exe"
+client\Get-AssemblyContentHash.ps1 -Path dist\FoghornClient.exe   # must match
+```
+
+Keep the file name `FoghornClient.exe`: the compiler records it inside the
+assembly, so a build under any other name never matches. A plain SHA256 will not
+do either — `csc.exe` stamps a build time and a new MVID into every build, so
+two builds of identical source always differ. `Get-AssemblyContentHash.ps1`
+blanks those two fields and hashes the rest.
 
 Because it has to build with that older compiler, the source avoids newer C#
 syntax (`$"…"` strings, `?.`, `nameof`, `out var`, expression-bodied members).
@@ -22,13 +47,38 @@ If you open it in Visual Studio and let it "modernise" the code, `build.cmd`
 will stop working — build it as a normal .NET Framework 4.8 WinForms project
 instead and that is fine too.
 
-On Linux or macOS with Mono:
+### Do not build the shipped client with Mono
+
+Mono can compile the client on Linux or macOS, and for a long time this file
+told you to build `dist/FoghornClient.exe` that way. **Do not.** It is how the
+1.0.1 client came to fail on every Windows PC.
+
+`mcs` compiles against Mono's class library, which has methods .NET Framework
+has never had. Nothing warns you: the build succeeds, the exe looks fine, and it
+only fails on a real PC, at run time, the first time it reaches that line. In
+1.0.1 the method was `String.TrimEnd(char)` — present in Mono and in .NET Core,
+absent from .NET Framework at every version — and every poll on every PC died
+with:
+
+```
+Method not found: 'System.String System.String.TrimEnd(Char)'
+```
+
+If you want to compile on Linux to check the code still parses, build it to a
+throwaway path and never to `dist/`:
 
 ```bash
-mcs -target:winexe -platform:anycpu -optimize+ -langversion:5 -out:dist/FoghornClient.exe \
+mcs -target:winexe -platform:anycpu -optimize+ -langversion:5 -out:/tmp/syntax-check.exe \
     -win32icon:client/foghorn.ico -r:System.dll -r:System.Core.dll -r:System.Drawing.dll \
     -r:System.Windows.Forms.dll -r:System.Web.Extensions.dll client/src/*.cs
 ```
+
+The binary that ships is built on Windows by `client\build.cmd`, with the
+compiler that comes with .NET Framework. That compiler only offers the methods
+the target PCs actually have, so this class of fault cannot compile in the first
+place. The *Client build test* workflow enforces it: it rebuilds on Windows,
+checks `dist\` matches, and then runs the shipped exe against a real server, so
+a Mono-built binary fails the pull request instead of reaching PCs.
 
 | File | What is in it |
 |---|---|

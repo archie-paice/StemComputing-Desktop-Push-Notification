@@ -2,9 +2,26 @@
 
 All notable changes to Foghorn are listed here, newest first.
 
-## Unreleased
+## 1.0.2
+
+This release exists because 1.0.1 did not work. The fix was in the source but
+never in the binary, so every Windows PC still failed. If you deployed 1.0.1,
+replace it with this.
 
 ### Fixed
+- **The client now reports its own version.** `Program.Version` was still
+  `1.0.0`, so even a correct client showed up as 1.0.0 in the web console and
+  there was no way to tell a fixed PC from a broken one. The version is now
+  checked against `FoghornClient.wxs` and the MSI on every pull request.
+- **The shipped client was still the broken one.** `dist\FoghornClient.exe` was
+  never rebuilt after the 1.0.1 source fix, so the binary in the release, on the
+  deployment share and inside the MSI still threw `Method not found` on every
+  poll. Rebuilt from `client\src` with the compiler in Windows, and checked
+  against a running server: it connects and the server records it.
+- **`dist\FoghornClient.msi` installed that broken client.** The MSI keeps its
+  own copy in an embedded cabinet, so replacing the exe in `dist\` did not
+  change what it deployed. The cabinet has been rebuilt around the working
+  client, and the MSI now unpacks to byte-for-byte what is in `dist\`.
 - **MSI transforms were empty in effect.** `New-FoghornTransform.ps1` called
   `GenerateTransform` on the original database instead of the modified one, so
   the `.mst` described removing the settings rather than adding them. PCs
@@ -15,12 +32,53 @@ All notable changes to Foghorn are listed here, newest first.
   condition and `SecureCustomProperties`). Rebuilt as 1.0.1 with them.
 - **`-UseSystemProxy` on the transform did nothing** — the MSI never wrote
   `UseSystemProxy`. It now does, from the `USESYSTEMPROXY` property.
+- **`BUILDING.md` told you to build the shipped client with Mono**, writing
+  `mcs … -out:dist/FoghornClient.exe`. That is how the 1.0.1 client came to call
+  a method .NET Framework does not have: `mcs` compiles against Mono's class
+  library, so the build succeeds and the exe only fails on a real PC. The
+  section now says to build on Windows with `client\build.cmd`, and keeps the
+  Mono command only as a syntax check that writes to a throwaway path.
 
 ### Added
 - `deploy/msi/build-msi.sh` builds the MSI, applies the post-build tweaks and
   checks the result, so a bare `wixl` build can't be shipped by mistake.
 - *MSI deploy test* GitHub Actions workflow: installs the MSI on a real Windows
   runner (plain, with transform, repair, uninstall, command-line properties).
+- *Client build test* GitHub Actions workflow. It rebuilds the client from
+  `client\src` on a Windows runner, fails if `dist\FoghornClient.exe` is not
+  that build, then starts the shipped exe against a real Foghorn server and
+  fails unless the server records it as connected. 1.0.1 shipped a client whose
+  source was fixed but whose binary was not rebuilt, and no check noticed; a
+  compile-only check would not have either, because the source compiled fine.
+- `client\Get-AssemblyContentHash.ps1`, which hashes an assembly with the build
+  timestamp and MVID blanked out. `csc.exe` is not deterministic, so two builds
+  of identical source never have the same SHA256; this gives a value that only
+  changes when the code does.
+- `deploy\msi\Update-MsiClient.ps1` puts the current `dist\FoghornClient.exe`
+  into the MSI's embedded cabinet, checks the result — including unpacking the
+  finished MSI and comparing what it would install — and refreshes
+  `dist\SHA256SUMS.txt`. It uses `makecab` and the Windows Installer COM API,
+  both part of Windows, so the MSI can be kept in step without WiX. Rebuilding
+  the MSI from `FoghornClient.wxs` still needs `build-msi.sh` on Linux.
+
+### Upgrading
+- The MSI is 1.0.2 with a new ProductCode and the same UpgradeCode, so it
+  replaces 1.0.0 *and* the broken 1.0.1 by itself: add it to the Group Policy
+  package, and each PC swaps the old client for this one at its next restart.
+  Keeping it at 1.0.1 would not have worked — Windows Installer sees a matching
+  ProductCode and version and decides the product is already installed.
+- The Foghorn **server** still reports 1.0.0. Its version lives in `server`,
+  which needs the Go toolchain to rebuild; changing the source without
+  rebuilding `dist\foghorn-server.exe` would repeat the mistake this release is
+  about. Server and client versions are independent — a 1.0.0 server works with
+  a 1.0.2 client.
+
+### Changed
+- `client\build.cmd` writes `dist\FoghornClient.exe` directly instead of leaving
+  the exe in `client\` to be copied by hand — the copy is what got forgotten in
+  1.0.1. Pass a path to build somewhere else: `build.cmd C:\tmp\FoghornClient.exe`.
+  It is also pinned to the 64-bit compiler, because the 32-bit one emits a
+  different assembly from the same source.
 - Linux server documentation: a section in the README and a full
   `INSTALL-SERVER.md` Appendix A (firewall, HTTPS, low ports, reverse proxy,
   upgrade, password reset, moving between Windows and Linux, removal).
@@ -28,10 +86,17 @@ All notable changes to Foghorn are listed here, newest first.
 ## 1.0.1
 
 ### Fixed
-- **Client failed to connect on PCs with only .NET Framework 4.0.** The client
-  used `String.TrimEnd(char)`, a single-char overload that was only added in
-  .NET Framework 4.5, so older PCs threw `Method not found` on every request.
-  Switched to the params-array overload that has existed since .NET 2.0.
+- **Client could not connect on any Windows PC.** The client called
+  `String.TrimEnd(char)`. That single-character overload is not part of .NET
+  Framework at any version — it only exists on .NET Core 2.0 and later — so the
+  call threw `Method not found: 'System.String System.String.TrimEnd(Char)'` on
+  every poll, on every PC, no matter how up to date it was. The source was
+  switched to the params-array overload, which has existed since .NET 2.0.
+
+  An earlier version of this entry said only PCs with .NET Framework 4.0 were
+  affected. That was wrong: every Windows PC was.
+
+  Note that the binary shipped in 1.0.1 still had the fault — see Unreleased.
 
 ### Added
 - **MSI + transform (`.mst`) deployment.** The MSI is now generic — no server
