@@ -99,18 +99,16 @@ Set-Property $modDb 'CLIENTKEY' $ClientKey
 if ($UseSystemProxy) { Set-Property $modDb 'USESYSTEMPROXY' '1' }
 $modDb.Commit()
 
-# Generate the transform. Error suppression bits:
-#   msiTransformErrorViewTransform             = 0x100
-#   msiTransformErrorAddExistingRow            = 0x1
-#   msiTransformErrorDelMissingRow             = 0x2
-#   msiTransformErrorAddExistingTable          = 0x4
-#   msiTransformErrorDelMissingTable           = 0x8
-#   msiTransformErrorUpdateMissingRow          = 0x10
-#   msiTransformErrorChangeCodePage            = 0x20
-# We only add rows to Property, so suppress "add existing" (harmless) and let
-# the rest error if they happen (they won't).
-$refDb.GenerateTransform($modDb, $MstPath) | Out-Null
-$refDb.CreateTransformSummaryInfo($modDb, $MstPath, 0, 0)
+# Generate the transform. GenerateTransform is called on the MODIFIED database
+# and given the ORIGINAL as its reference: "the differences that turn the
+# reference into me". (Called the other way round it writes a transform that
+# deletes the rows we just added: it either fails to apply or does nothing, and the
+# PCs install with no server address or key.) Same order as the Windows
+# SDK sample WiGenXfm.vbs.
+$modDb.GenerateTransform($refDb, $MstPath) | Out-Null
+# 0, 0 = no error suppression and no validation checks: the transform is only
+# Property rows, so it applies to this MSI and to later versions of it.
+$modDb.CreateTransformSummaryInfo($refDb, $MstPath, 0, 0)
 
 # Release the COM objects and delete the working copy
 [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($modDb)

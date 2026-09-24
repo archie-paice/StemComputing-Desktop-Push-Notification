@@ -1,4 +1,4 @@
-# Foghorn server on Linux (systemd). See docs/INSTALL-SERVER.md, "Linux".
+# Foghorn server on Linux (systemd). See docs/INSTALL-SERVER.md, "Appendix A - Installing on Linux".
 [Unit]
 Description=Foghorn alert server
 After=network-online.target
