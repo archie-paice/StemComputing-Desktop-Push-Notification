@@ -2,9 +2,17 @@
 
 All notable changes to Foghorn are listed here, newest first.
 
-## Unreleased
+## 1.0.2
+
+This release exists because 1.0.1 did not work. The fix was in the source but
+never in the binary, so every Windows PC still failed. If you deployed 1.0.1,
+replace it with this.
 
 ### Fixed
+- **The client now reports its own version.** `Program.Version` was still
+  `1.0.0`, so even a correct client showed up as 1.0.0 in the web console and
+  there was no way to tell a fixed PC from a broken one. The version is now
+  checked against `FoghornClient.wxs` and the MSI on every pull request.
 - **The shipped client was still the broken one.** `dist\FoghornClient.exe` was
   never rebuilt after the 1.0.1 source fix, so the binary in the release, on the
   deployment share and inside the MSI still threw `Method not found` on every
@@ -52,6 +60,18 @@ All notable changes to Foghorn are listed here, newest first.
   `dist\SHA256SUMS.txt`. It uses `makecab` and the Windows Installer COM API,
   both part of Windows, so the MSI can be kept in step without WiX. Rebuilding
   the MSI from `FoghornClient.wxs` still needs `build-msi.sh` on Linux.
+
+### Upgrading
+- The MSI is 1.0.2 with a new ProductCode and the same UpgradeCode, so it
+  replaces 1.0.0 *and* the broken 1.0.1 by itself: add it to the Group Policy
+  package, and each PC swaps the old client for this one at its next restart.
+  Keeping it at 1.0.1 would not have worked — Windows Installer sees a matching
+  ProductCode and version and decides the product is already installed.
+- The Foghorn **server** still reports 1.0.0. Its version lives in `server`,
+  which needs the Go toolchain to rebuild; changing the source without
+  rebuilding `dist\foghorn-server.exe` would repeat the mistake this release is
+  about. Server and client versions are independent — a 1.0.0 server works with
+  a 1.0.2 client.
 
 ### Changed
 - `client\build.cmd` writes `dist\FoghornClient.exe` directly instead of leaving

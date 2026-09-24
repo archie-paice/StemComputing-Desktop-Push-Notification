@@ -46,6 +46,26 @@ jobs:
           if (-not (Test-Path $csc)) { throw "No 64-bit in-box C# compiler on this runner; dist\FoghornClient.exe is built with that one." }
           "csc: $((Get-Item $csc).VersionInfo.FileVersion)"
 
+      - name: Client, WXS and MSI all claim the same version
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The client reported 1.0.0 for the whole of 1.0.1 because the version
+          # is written down in three places and only one of them was updated.
+          $src = Get-Content .\client\src\Program.cs -Raw
+          if ($src -notmatch 'const\s+string\s+Version\s*=\s*"([^"]+)"') { throw "no Version constant in client\src\Program.cs" }
+          $client = $Matches[1]
+          $wxs = ([xml](Get-Content .\deploy\msi\FoghornClient.wxs -Raw)).Wix.Product.Version
+          $installer = New-Object -ComObject WindowsInstaller.Installer
+          $db = $installer.OpenDatabase("$env:GITHUB_WORKSPACE\dist\FoghornClient.msi", 0)
+          $view = $db.OpenView("SELECT Value FROM Property WHERE Property = 'ProductVersion'")
+          [void]$view.Execute($null)
+          $msi = $view.Fetch().StringData(1)
+          [void]$view.Close()
+          "  client\src\Program.cs : $client"
+          "  FoghornClient.wxs     : $wxs"
+          "  dist\FoghornClient.msi: $msi"
+          if ($client -ne $wxs -or $wxs -ne $msi) { throw "these three must agree" }
+
       - name: Build the client from source
         run: |
           $ErrorActionPreference = 'Stop'

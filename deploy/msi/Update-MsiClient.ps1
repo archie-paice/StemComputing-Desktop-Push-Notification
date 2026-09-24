@@ -18,8 +18,15 @@
     finished MSI and comparing what it would install, and refreshes
     dist\SHA256SUMS.txt.
 
-    If you change FoghornClient.wxs itself (components, registry values,
-    properties, version), this script cannot help - rebuild with build-msi.sh.
+    It also keeps the version in step. FoghornClient.wxs is where the version
+    is written down; if the MSI disagrees, this script raises it and mints a new
+    ProductCode, because Windows Installer will not replace an installed product
+    with one carrying the same ProductCode and version - PCs would simply never
+    pick the new build up. The UpgradeCode is left alone, which is what lets
+    MajorUpgrade remove the old client at the next restart.
+
+    Structural changes to FoghornClient.wxs (components, registry values,
+    directories) are beyond it - rebuild with build-msi.sh on Linux.
 
 .PARAMETER MsiPath
     The MSI to update. Default: dist\FoghornClient.msi
@@ -81,9 +88,19 @@ $fileKey = $fileRows[0][0]
 $cabName = ((Get-Rows $db "SELECT Cabinet FROM Media" 1)[0][0]) -replace '^#', ''   # '#foghorn.cab' = embedded
 $newSize = (Get-Item $ExePath).Length
 
+# FoghornClient.wxs is the one place the version is written down. If the MSI
+# disagrees with it, this script brings the MSI up to date rather than letting
+# the two drift.
+$wxsPath = Join-Path $PSScriptRoot 'FoghornClient.wxs'
+if (-not (Test-Path $wxsPath)) { throw "Cannot find $wxsPath" }
+$wxsVersion = ([xml](Get-Content $wxsPath -Raw)).Wix.Product.Version
+if (-not $wxsVersion) { throw "No Product Version in $wxsPath" }
+$msiVersion = (Get-Rows $db "SELECT Value FROM Property WHERE Property = 'ProductVersion'" 1)[0][0]
+
 Write-Host "MSI:      $MsiPath"
 Write-Host "Client:   $ExePath ($newSize bytes)"
 Write-Host "Cabinet:  $cabName, holding '$fileKey'"
+Write-Host "Version:  $msiVersion in the MSI, $wxsVersion in FoghornClient.wxs"
 
 $work = Join-Path ([System.IO.Path]::GetTempPath()) ("foghorn-msi-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $work | Out-Null
@@ -129,6 +146,28 @@ try {
     [void]$view.Execute($null)
     [void]$view.Close()
 
+    # ---- bring the version into line, if it has moved ---------------------
+    if ($wxsVersion -ne $msiVersion) {
+        # A new version needs a new ProductCode, or Windows Installer treats it
+        # as the same product already installed and PCs never pick it up. The
+        # UpgradeCode stays put - that is what lets MajorUpgrade replace the
+        # old one at next restart.
+        $newProductCode = '{' + [guid]::NewGuid().ToString().ToUpper() + '}'
+        foreach ($set in @("Value = '$wxsVersion' WHERE Property = 'ProductVersion'",
+                           "Value = '$newProductCode' WHERE Property = 'ProductCode'")) {
+            $view = $db.OpenView("UPDATE Property SET $set")
+            [void]$view.Execute($null)
+            [void]$view.Close()
+        }
+        # 9 = PID_REVNUMBER, the package code. Every distinct MSI needs its own.
+        $si = $db.SummaryInformation(1)
+        $si.Property(9) = '{' + [guid]::NewGuid().ToString().ToUpper() + '}'
+        $si.Persist()
+        [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($si)
+        Write-Host "Version:  raised to $wxsVersion, new ProductCode $newProductCode"
+        $msiVersion = $wxsVersion
+    }
+
     $db.Commit()
 }
 finally {
@@ -172,6 +211,7 @@ foreach ($v in 'ServerUrl', 'ClientKey', 'UseSystemProxy') {
 }
 Assert ((Get-Rows $vdb "SELECT FileSize FROM File WHERE File = '$fileKey'" 1)[0][0] -eq "$newSize") `
        "File table records $newSize bytes"
+Assert ($version -eq $wxsVersion) "ProductVersion is $wxsVersion, matching FoghornClient.wxs"
 [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($vdb)
 [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($verifier)
 $vdb = $null; $verifier = $null
