@@ -14,7 +14,24 @@ build.cmd
 ```
 
 produces `client\FoghornClient.exe`. Copy it over `dist\FoghornClient.exe` (and
-onto your deployment share).
+onto your deployment share), then refresh `dist\SHA256SUMS.txt`.
+
+**Always rebuild `dist\FoghornClient.exe` in the same commit that changes
+`client\src`.** 1.0.1 fixed the client source but shipped the 1.0.0 binary, so
+every PC kept failing until 1.0.2. The *Client build test* workflow now rebuilds
+the client on a Windows runner and fails the pull request if `dist\` does not
+match the source, so this cannot reach PCs again. To check before you push:
+
+```powershell
+cd client
+.\build.cmd
+.\Get-AssemblyContentHash.ps1 -Path .\FoghornClient.exe
+.\Get-AssemblyContentHash.ps1 -Path ..\dist\FoghornClient.exe   # must be the same
+```
+
+The two hashes are equal when the binaries hold the same code. A plain SHA256
+will not do: `csc.exe` stamps a build time and a new MVID into every build, so
+two builds of identical source always differ.
 
 Because it has to build with that older compiler, the source avoids newer C#
 syntax (`$"…"` strings, `?.`, `nameof`, `out var`, expression-bodied members).
@@ -22,13 +39,38 @@ If you open it in Visual Studio and let it "modernise" the code, `build.cmd`
 will stop working — build it as a normal .NET Framework 4.8 WinForms project
 instead and that is fine too.
 
-On Linux or macOS with Mono:
+### Do not build the shipped client with Mono
+
+Mono can compile the client on Linux or macOS, and for a long time this file
+told you to build `dist/FoghornClient.exe` that way. **Do not.** It is how the
+1.0.1 client came to fail on every Windows PC.
+
+`mcs` compiles against Mono's class library, which has methods .NET Framework
+has never had. Nothing warns you: the build succeeds, the exe looks fine, and it
+only fails on a real PC, at run time, the first time it reaches that line. In
+1.0.1 the method was `String.TrimEnd(char)` — present in Mono and in .NET Core,
+absent from .NET Framework at every version — and every poll on every PC died
+with:
+
+```
+Method not found: 'System.String System.String.TrimEnd(Char)'
+```
+
+If you want to compile on Linux to check the code still parses, build it to a
+throwaway path and never to `dist/`:
 
 ```bash
-mcs -target:winexe -platform:anycpu -optimize+ -langversion:5 -out:dist/FoghornClient.exe \
+mcs -target:winexe -platform:anycpu -optimize+ -langversion:5 -out:/tmp/syntax-check.exe \
     -win32icon:client/foghorn.ico -r:System.dll -r:System.Core.dll -r:System.Drawing.dll \
     -r:System.Windows.Forms.dll -r:System.Web.Extensions.dll client/src/*.cs
 ```
+
+The binary that ships is built on Windows by `client\build.cmd`, with the
+compiler that comes with .NET Framework. That compiler only offers the methods
+the target PCs actually have, so this class of fault cannot compile in the first
+place. The *Client build test* workflow enforces it: it rebuilds on Windows,
+checks `dist\` matches, and then runs the shipped exe against a real server, so
+a Mono-built binary fails the pull request instead of reaching PCs.
 
 | File | What is in it |
 |---|---|
