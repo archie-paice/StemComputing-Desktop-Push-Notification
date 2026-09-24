@@ -19,17 +19,30 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
+// These are what Windows shows on the Details tab of the exe's properties, and
+// what an administrator sees when they are working out where a program on their
+// estate came from. Keep the versions in step with Program.Version below.
 [assembly: AssemblyTitle("Foghorn desktop alerts")]
 [assembly: AssemblyProduct("Foghorn")]
 [assembly: AssemblyDescription("Shows alerts sent from the Foghorn server")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyCompany("Archie Paice")]
+[assembly: AssemblyCopyright("Copyright (c) 2026 Archie Paice. MIT licence.")]
+[assembly: AssemblyVersion("1.0.3.0")]
+[assembly: AssemblyFileVersion("1.0.3.0")]
 
 namespace Foghorn
 {
     static class Program
     {
-        public const string Version = "1.0.2";
+        public const string Version = "1.0.3";
+
+        /// <summary>
+        /// Shown in --help and --status. Whoever is troubleshooting a PC should
+        /// be able to see who wrote this and how to reach them without having
+        /// to go and find the repository.
+        /// </summary>
+        public const string Credit = "Foghorn was designed and built by Archie Paice.\n" +
+                                     "Contact:  hello@archiepaice.com";
 
         [STAThread]
         static int Main(string[] args)
@@ -55,7 +68,8 @@ namespace Foghorn
                     "FoghornClient.exe            run normally (no window; alerts pop up when sent)\n" +
                     "FoghornClient.exe --test     show sample alerts without needing a server\n" +
                     "FoghornClient.exe --status   show the settings in use and test the connection\n" +
-                    "  --server URL --key KEY     override the configured server for this run",
+                    "  --server URL --key KEY     override the configured server for this run\n\n" +
+                    Credit,
                     "Foghorn client " + Version, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return 0;
             }
@@ -174,6 +188,8 @@ namespace Foghorn
             }
             sb.AppendLine();
             sb.AppendLine("Log file:  " + Log.FilePath);
+            sb.AppendLine();
+            sb.AppendLine(Program.Credit);
             MessageBox.Show(sb.ToString(), "Foghorn client status", MessageBoxButtons.OK, icon);
         }
     }

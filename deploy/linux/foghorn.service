@@ -1,4 +1,5 @@
 # Foghorn server on Linux (systemd). See docs/INSTALL-SERVER.md, "Appendix A - Installing on Linux".
+# Foghorn was designed and built by Archie Paice <hello@archiepaice.com>.
 [Unit]
 Description=Foghorn alert server
 After=network-online.target

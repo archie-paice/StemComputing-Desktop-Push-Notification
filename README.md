@@ -177,7 +177,16 @@ Contributions and bug reports are welcome. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for how to file issues, open pull requests,
 and the coding conventions the project follows.
 
+## Author
+
+Foghorn was designed and built by **Archie Paice** — the server, the desktop
+client, the web console, the MSI and transform tooling, the Group Policy
+template and the documentation.
+
+Contact: <hello@archiepaice.com>
+
 ## Licence
 
-MIT — see [LICENSE](LICENSE). The server bundles `golang.org/x/sys`
-(BSD-3-Clause; licence in `server/vendor/golang.org/x/sys/LICENSE`).
+MIT — Copyright (c) 2026 Archie Paice. See [LICENSE](LICENSE). The server
+bundles `golang.org/x/sys` (BSD-3-Clause; licence in
+`server/vendor/golang.org/x/sys/LICENSE`).

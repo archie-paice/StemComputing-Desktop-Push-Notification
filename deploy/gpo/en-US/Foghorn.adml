@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <policyDefinitionResources xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
   <displayName>Foghorn desktop alerts</displayName>
-  <description>Settings for the Foghorn desktop alert client.</description>
+  <description>Settings for the Foghorn desktop alert client. Foghorn was designed and built by Archie Paice (hello@archiepaice.com).</description>
   <resources>
     <stringTable>
       <string id="SUPPORTED_Foghorn">Windows 10, Windows 11 and Windows Server 2016 or later, with the Foghorn client installed</string>
       <string id="Cat_Foghorn">Foghorn</string>
-      <string id="Cat_Foghorn_Help">Settings for the Foghorn desktop alert client.</string>
+      <string id="Cat_Foghorn_Help">Settings for the Foghorn desktop alert client.
+
+Foghorn was designed and built by Archie Paice (hello@archiepaice.com).</string>
       <string id="ServerConnection">Foghorn server connection</string>
       <string id="ServerConnection_Help">Tells the Foghorn client on each computer where your Foghorn server is.
 
