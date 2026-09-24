@@ -208,6 +208,7 @@
         link('send', 'Send an alert'), link('alerts', 'Sent alerts'), link('computers', 'Computers'),
         link('groups', 'Groups'), isAdmin() ? link('settings', 'Settings') : null, link('help', 'Help')),
       h('div', { class: 'side-foot' },
+        h('div', { class: 'credit' }, 'Built by ', h('a', { href: 'mailto:hello@archiepaice.com' }, 'Archie Paice')),
         h('div', { class: 'who' }, S.me.display_name || S.me.username),
         h('a', { href: '#/account' }, 'Change password'),
         h('a', { href: '#', onclick: function (e) { e.preventDefault(); api('POST', '/api/logout').catch(function () {}).then(function () { S.me = null; draft = freshDraft(); render(); }); } }, 'Sign out')));
@@ -704,7 +705,9 @@
 
       box.appendChild(h('div', { class: 'panel' }, h('h2', null, 'About this server'),
         h('dl', { class: 'dl' }, h('dt', null, 'Version'), h('dd', null, st.version), h('dt', null, 'Data folder'), h('dd', { class: 'mono' }, st.data_dir),
-          h('dt', null, 'HTTPS'), h('dd', null, st.https ? 'On' : 'Off. Traffic is unencrypted on your network. The admin guide explains how to turn HTTPS on.'))));
+          h('dt', null, 'HTTPS'), h('dd', null, st.https ? 'On' : 'Off. Traffic is unencrypted on your network. The admin guide explains how to turn HTTPS on.'),
+          h('dt', null, 'Built by'),
+          h('dd', null, 'Archie Paice – ', h('a', { href: 'mailto:hello@archiepaice.com' }, 'hello@archiepaice.com')))));
     }
     function editUser(u) {
       var uname = h('input', { type: 'text', maxlength: 64, value: u ? u.username : '', disabled: !!u, autocapitalize: 'none' });

@@ -28,15 +28,30 @@ estate, this only changes what Foghorn says about who wrote it.
   but the credit above appears on that same properties dialog and it would have
   sat next to a version that was two releases out of date.
 
-### Still to do
-- The **web console** shows no credit. Its files are compiled into the server
-  binary with `go:embed`, so changing them means rebuilding
-  `dist\foghorn-server.exe` and `dist\foghorn-server-linux-amd64`, which needs
-  the Go toolchain. Editing the source without rebuilding would leave the
-  shipped binaries disagreeing with it — the fault 1.0.2 existed to fix.
-- The server still reports 1.0.0 from `foghorn-server version`, for the same
-  reason. Server and client versions are independent; a 1.0.0 server works with
-  a 1.0.3 client.
+### Not yet in the shipped server — needs a rebuild
+The web console credit has been **written but not built**. `server/web/app.js`
+and `style.css` now put "Built by Archie Paice" above the signed-in user in the
+sidebar, and a *Built by* row in Settings → About this server. Neither is in
+`dist\foghorn-server.exe` or `dist\foghorn-server-linux-amd64`, because those
+files are compiled into the binary with `go:embed` and rebuilding needs the Go
+toolchain, which was not available.
+
+**Until someone rebuilds the server, signing into the console shows no credit.**
+The source and the shipped binaries disagree, which is the same class of fault
+that made 1.0.1 useless — it is recorded here rather than left to be discovered.
+
+To close it:
+
+```bash
+cd server && go test ./... \
+  && go build -mod=vendor -trimpath -ldflags "-s -w" -o ../dist/foghorn-server.exe . \
+  && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags "-s -w" \
+       -o ../dist/foghorn-server-linux-amd64 .
+```
+
+then refresh `dist\SHA256SUMS.txt`. The same rebuild would fix
+`foghorn-server version` still printing 1.0.0, and the `reset-password` message
+that tells Linux users to run the Windows-only `foghorn-server service start`.
 
 ## 1.0.2
 
